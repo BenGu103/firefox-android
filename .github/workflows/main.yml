@@ -1,0 +1,46 @@
+name: Build My Firefox Fork
+
+on:
+  workflow_dispatch: # מאפשר הרצה ידנית בלחיצת כפתור
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    # מגדיר משתני סביבה כדי למנוע שגיאות זיכרון וחתימה
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx6g -Dorg.gradle.daemon=false -Dkotlin.daemon.jvm.options=-Xmx4g"
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive # חשוב: מוריד גם תתי-מודולים אם יש
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    # יצירת קובץ local.properties כדי לעקוף בעיות חתימה ו-GeckoView
+    - name: Configure local.properties
+      run: |
+        echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+        echo "autosign=true" >> local.properties
+        # השורה הבאה חשובה - היא אומרת לגריידל להשתמש בגרסה מוכנה של המנוע ולא לבנות אותו
+        echo "ac_build_geckoview=false" >> local.properties 
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    # הפקודה הספציפית הזו בונה רק את דפדפן Fenix בגרסת Debug
+    # הוספנו --no-daemon ו---stacktrace לפתרון בעיות
+    - name: Build Fenix Debug APK
+      run: ./gradlew fenix:assembleFenixDebug --stacktrace --no-daemon
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: fenix-debug-apk
+        path: fenix/app/build/outputs/apk/fenix/debug/*.apk
+        
