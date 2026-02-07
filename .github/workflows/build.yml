@@ -1,4 +1,4 @@
-name: Build Fenix Direct From Source
+name: Build Fenix Main Fix
 
 on:
   workflow_dispatch:
@@ -8,11 +8,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. הורדת הקוד - הפעם ישירות מ-Mozilla
+    # 1. הורדת הקוד הראשי והעדכני ביותר ממוזילה
     - uses: actions/checkout@v4
       with:
-        repository: mozilla-mobile/firefox-android # <--- התיקון: מושך מהמקור
-        ref: fenix-125.0.0
+        repository: mozilla-mobile/firefox-android
         submodules: recursive
 
     - name: Set up JDK 17
@@ -21,32 +20,34 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # יצירת קובץ local.properties
+    # יצירת קובץ local.properties בתיקייה הראשית (כי אנחנו בריפו המקורי)
     - name: Create local.properties
       run: |
-        echo "sdk.dir=$ANDROID_SDK_ROOT" > fenix/local.properties
-        echo "autosign=true" >> fenix/local.properties
-        echo "ac_build_geckoview=false" >> fenix/local.properties
-        # הגדרות זיכרון
-        echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m" >> fenix/gradle.properties
+        echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+        echo "autosign=true" >> local.properties
+        echo "ac_build_geckoview=false" >> local.properties
+        # הגדרות זיכרון מחמירות למניעת קריסה
+        echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m" >> gradle.properties
 
     - name: Grant execute permission for gradlew
-      run: chmod +x fenix/gradlew
+      run: chmod +x gradlew
 
-    # שינוי שם ה-ID (חובה לעשות את זה כאן כי הקוד יורד נקי מה-Checkout)
+    # שינוי ה-Application ID
     - name: Change Application ID
       run: |
-        # מחפש את השורה של ה-ID ומחליף אותה
-        # הערה: בגרסאות ישנות יותר הקובץ עשוי להיות build.gradle רגיל ולא kts, הפקודה הזו מנסה לכסות את שניהם
-        find fenix/app -name "build.gradle*" -exec sed -i 's/applicationId = "org.mozilla.fenix"/applicationId = "com.ben.browser"/' {} +
+        # מחליף את השם בקובץ ההגדרות של Fenix
+        sed -i 's/applicationId = "org.mozilla.fenix"/applicationId = "com.ben.browser"/' fenix/app/build.gradle.kts
         echo "Application ID changed successfully!"
 
-    # הבנייה
-    - name: Build Fenix Debug (Stable Tag)
-      working-directory: ./fenix
+    # הבנייה עצמה
+    # הוספתי דילוג ספציפי על NimbusTools שגרם לקריסה הקודמת
+    - name: Build Fenix Debug (Skip Nimbus)
       run: |
-        ./gradlew assembleDebug \
-        -x lint -x test -x check \
+        ./gradlew fenix:assembleFenixDebug \
+        -x lint \
+        -x test \
+        -x check \
+        -x :browser-engine-gecko:assembleNimbusTools \
         --max-workers 1 \
         --no-daemon \
         -Dorg.gradle.jvmargs="-Xmx2048m -XX:+HeapDumpOnOutOfMemoryError" \
@@ -55,5 +56,5 @@ jobs:
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: fenix-stable-apk
+        name: fenix-debug-apk
         path: fenix/app/build/outputs/apk/fenix/debug/*.apk
