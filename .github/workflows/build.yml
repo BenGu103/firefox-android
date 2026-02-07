@@ -1,0 +1,45 @@
+name: Build Fenix Custom
+
+on:
+  workflow_dispatch: # מאפשר להריץ ידנית
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. הורדת הקוד
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    # 2. התקנת Java 17 (חובה לפיירפוקס)
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    # 3. יצירת קובץ הגדרות מקומי כדי לעקוף חתימות ובעיות מנוע
+    - name: Create local.properties
+      run: |
+        echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+        echo "autosign=true" >> local.properties
+        # מונע ניסיון לבנות את מנוע GeckoView מאפס (חוסך שעות)
+        echo "ac_build_geckoview=false" >> local.properties 
+
+    # 4. מתן הרשאות הרצה
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    # 5. הבנייה עצמה - רק של גרסת Fenix Debug
+    - name: Build Fenix Debug
+      run: ./gradlew fenix:assembleFenixDebug --stacktrace --no-daemon
+
+    # 6. העלאת הקובץ המוכן (Artifact)
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: fenix-custom-apk
+        path: fenix/app/build/outputs/apk/fenix/debug/*.apk
+        
