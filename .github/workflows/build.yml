@@ -1,4 +1,4 @@
-name: Build Fenix Skip Checks
+name: Build Fenix Stable
 
 on:
   workflow_dispatch:
@@ -8,9 +8,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # 1. הורדת הקוד - הפעם של גרסה יציבה ספציפית!
     - uses: actions/checkout@v4
       with:
         submodules: recursive
+        # שינוי קריטי: אנחנו מושכים תגית ספציפית (גרסה 125) ולא את ה-main
+        # זה מבטיח שכל התלויות והכלים קיימים וזמינים
+        ref: fenix-125.0.0
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -18,26 +22,38 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # יצירת קובץ local.properties בתוך תיקיית fenix
+    # יצירת קובץ local.properties עם ההגדרות שלנו
     - name: Create local.properties
       run: |
         echo "sdk.dir=$ANDROID_SDK_ROOT" > fenix/local.properties
         echo "autosign=true" >> fenix/local.properties
-        echo "ac_build_geckoview=false" >> fenix/local.properties 
+        echo "ac_build_geckoview=false" >> fenix/local.properties
+        # הגבלת זיכרון
+        echo "org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m" >> fenix/gradle.properties
 
     - name: Grant execute permission for gradlew
       run: chmod +x fenix/gradlew
 
-    # הפקודה המעודכנת:
-    # -x lint: מדלג על בדיקות איכות קוד
-    # -x test: מדלג על טסטים
-    # -x check: מדלג על בדיקות כלליות
-    - name: Build Fenix Debug (No Lint)
+    # שינוי שם ה-ID (חובה לעשות את זה כאן כי הקוד יורד נקי מה-Checkout)
+    # הפקודה הזו מחליפה את ה-ID בקובץ באופן אוטומטי לפני הבנייה
+    - name: Change Application ID
+      run: |
+        sed -i 's/applicationId = "org.mozilla.fenix"/applicationId = "com.ben.browser"/' fenix/app/build.gradle.kts
+        echo "Application ID changed successfully!"
+
+    # הבנייה עצמה (מצב חסכוני בזיכרון)
+    - name: Build Fenix Debug (Stable Tag)
       working-directory: ./fenix
-      run: ./gradlew assembleDebug -x lint -x test -x check --stacktrace --no-daemon
+      run: |
+        ./gradlew assembleDebug \
+        -x lint -x test -x check \
+        --max-workers 1 \
+        --no-daemon \
+        -Dorg.gradle.jvmargs="-Xmx2048m -XX:+HeapDumpOnOutOfMemoryError" \
+        --stacktrace
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: fenix-custom-apk
+        name: fenix-stable-apk
         path: fenix/app/build/outputs/apk/fenix/debug/*.apk
